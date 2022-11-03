@@ -1,0 +1,572 @@
+##################################
+#       local yum repo create    #
+##################################
+link: https://www.linuxtechi.com/setup-local-yum-dnf-repository-rhel-8/
+cp -r /run/media/root/RHEL-8-3-0-BaseOS-x86_64 /etc/
+cp -v /etc/RHEL-8-3-0-BaseOS-x86_64/media.repo /etc/yum.repos.d/rhel8.repo 
+'/etc/RHEL-8-3-0-BaseOS-x86_64/media.repo' -> '/etc/yum.repos.d/rhel8.repo'
+
+chmod 644 /etc/yum.repos.d/rhel8.repo
+
+[root@linuxtechi-rhel8 ~]# vi /etc/yum.repos.d/rhel8.repo
+[InstallMedia-BaseOS]
+name=Red Hat Enterprise Linux 8 - BaseOS
+metadata_expire=-1
+gpgcheck=1
+enabled=1
+baseurl=file:///etc/RHEL-8-3-0-BaseOS-x86_64/BaseOS/
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
+[InstallMedia-AppStream]
+name=Red Hat Enterprise Linux 8 - AppStream
+metadata_expire=-1
+gpgcheck=1
+enabled=1
+baseurl=file:///etc/RHEL-8-3-0-BaseOS-x86_64/AppStream/
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
+
+dnf clean all
+subscription-manager clean
+dnf repolist
+
+vi /etc/yum/pluginconf.d/subscription-manager.conf
+[main]
+enabled=0
+
+yum install curl
+
+#################################
+#   19c CDB create              #
+#################################
+step1: Automation Tasks
+-----------------------
+-> crontab setup.
+-> DBsat report set.
+-> OEM setup.
+-> Daily health check report setup.
+-> log deletation setup.
+->one time backup transfer:-
+#rsync -avz /db_backup/datapump/* oracle@10.0.12.10:/db_backup/datapump/ --progress
+
+step2: Binary installation
+--------------------------
+#vi /etc/sysctl.conf
+fs.file-max = 6815744 
+kernel.sem = 250 32000 100 128 
+kernel.shmmni = 4096 
+kernel.shmall = 1073741824 
+kernel.shmmax = 4398046511104 
+kernel.panic_on_oops = 1 
+net.core.rmem_default = 262144 
+net.core.rmem_max = 4194304 
+net.core.wmem_default = 262144 
+net.core.wmem_max = 1048576 
+net.ipv4.conf.all.rp_filter = 2 
+net.ipv4.conf.default.rp_filter = 2 
+fs.aio-max-nr = 1048576 
+net.ipv4.ip_local_port_range = 9000 65500
+
+#/sbin/sysctl -p
+
+#vi /etc/security/limits.conf
+oracle   soft   nofile    1024 
+oracle   hard   nofile    65536 
+oracle   soft   nproc    16384 
+oracle   hard   nproc    16384 
+oracle   soft   stack    10240 
+oracle   hard   stack    32768 
+oracle   hard   memlock    134217728 
+oracle   soft   memlock    134217728
+
+dnf install -y bc
+dnf install -y binutils
+dnf install -y compat-libcap1
+dnf install -y compat-libstdc++-33
+dnf install -y dtrace-utils yum install -y elfutils-libelf
+dnf install -y elfutils-libelf-devel
+dnf install -y fontconfig-devel
+dnf install -y glibc
+dnf install -y glibc-devel
+dnf install -y ksh
+dnf install -y libaio
+dnf install -y libaio-devel
+dnf install -y libdtrace-ctf-devel
+dnf install -y libXrender
+dnf install -y libXrender-devel
+dnf install -y libX11
+dnf install -y libXau
+dnf install -y libXi
+dnf install -y libXtst
+dnf install -y libgcc
+dnf install -y librdmacm-devel
+dnf install -y libstdc++
+dnf install -y libstdc++-devel
+dnf install -y libxcb
+dnf install -y make
+dnf install -y net-tools
+dnf install -y nfs-utils
+dnf install -y python
+dnf install -y python-configshell
+dnf install -y python-rtslib
+dnf install -y python-six
+dnf install -y targetcli
+dnf install -y smartmontools
+dnf install -y sysstat
+dnf install -y unixODBC
+dnf install -y libnsl
+dnf install -y libnsl.i686
+dnf install -y libnsl2
+dnf install -y libnsl2.i686
+
+#groupadd -g 54321 oinstall
+#groupadd -g 54322 dba
+#groupadd -g 54323 oper
+
+#useradd -u 54321 -g oinstall -G dba,oper oracle
+#id oracle
+#passwd oracle
+
+mkdir -p /u01/app/oracle/product/19.0.0/db_1
+mkdir -p /u02
+mkdir -p /u04
+mkdir -p /db_backup
+chown -R oracle:oinstall /u01 /u04 /u02 /db_backup
+chmod -R 775 /u01 /u04 /u02 /db_backup
+
+mkdir -p /db_backup/rman_backup
+#rsync -avz /db_backup/* oracle@10.0.12.8:/db_backup/ --progress
+
+--from root
+#vi /etc/fstab
+none /dev/shm                            tmfs defaults,size=6G 0 0
+#mount -o remount /dev/shm
+
+# Oracle Settings
+export TMP=/tmp
+export TMPDIR=$TMP
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=$ORACLE_BASE/product/19.0.0/db_1
+export ORACLE_SID=cdbmw
+export PATH=/usr/sbin:$PATH
+export PATH=$ORACLE_HOME/bin:$PATH:$ORACLE_HOME/OPatch
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
+export CLASSPATH=$ORACLE_HOME/jlib:$ORACLE_HOME/rdbms/jlib
+PATH=$PATH:$HOME/.local/bin:$HOME/bin
+
+vi /etc/selinux/config
+SELINUX=permissive
+
+systemctl disable firewalld
+systemctl stop firewalld
+
+export CV_ASSUME_DISTID=OL7
+./runInstaller
+
+#############################################################################NRBG#################################################################
+----------restore--------------
+restore controlfile from '/db_backup/rman_backup/control_c-58925073-20221025-00';
+alter database drop logfile group 4;
+alter database drop logfile group 5;
+alter database drop logfile group 6;
+alter database drop logfile group 7;
+
+Alter database rename file '/u02/oradata/dc/redo03.log' to '/u02/oradata/cdbmwtst/redo03.log';
+Alter database rename file '/u02/oradata/dc/redo02.log' to '/u02/oradata/cdbmwtst/redo02.log';
+Alter database rename file '/u02/oradata/dc/redo01.log' to '/u02/oradata/cdbmwtst/redo01.log';
+
+run { 
+set newname for datafile 1 to  '/u02/oradata/cdbmwtst/system01.dbf';
+set newname for datafile 2 to  '/u02/oradata/cdbmwtst/audit01.dbf';
+set newname for datafile 3 to  '/u02/oradata/cdbmwtst/sysaux01.dbf';
+set newname for datafile 4 to  '/u02/oradata/cdbmwtst/undotbs01.dbf';
+set newname for datafile 7 to  '/u02/oradata/cdbmwtst/users01.dbf';
+
+set newname for tempfile 1 to '/u02/oradata/cdbmwtst/temp01.dbf';
+restore database;
+switch datafile all;
+switch tempfile all;
+recover database;
+}
+
+run { 
+restore database;
+recover database;
+}
+
+#############################################################################netwa#################################################################
+----------restore--------------
+restore controlfile from '/db_backup/rman_backup/control_c-58925073-20221025-00';
+alter database drop logfile group 4;
+alter database drop logfile group 5;
+alter database drop logfile group 6;
+alter database drop logfile group 7;
+
+Alter database rename file '/u02/kionetwa/redo03.log' to '/u03/netwa/redo03.log';
+Alter database rename file '/u02/kionetwa/redo02.log' to '/u03/netwa/redo02.log';
+Alter database rename file '/u02/kionetwa/redo01.log' to '/u03/netwa/redo01.log';
+
+run { 
+set newname for datafile 1 to  '/u03/kionetwa/system01.dbf';
+set newname for datafile 3 to  '/u03/kionetwa/sysaux01.dbf';
+set newname for datafile 4 to  '/u03/kionetwa/undotbs01.dbf';
+set newname for datafile 7 to  '/u03/kionetwa/users01.dbf';
+
+set newname for tempfile 1 to '/u03/netwa/temp01.dbf';
+restore database;
+switch datafile all;
+switch tempfile all;
+recover database;
+}
+
+-----patch----
+apply Jul 2022 patch 
+
+###########create CDB###################
+dbca
+-------------------wallet configure for each pdb------------------------
+select pdb_id, pdb_name, guid from dba_pdbs;
+        3	PDBM	9BEC9ED60F25365FE0531D0C000AD3CC
+        2	PDB$SEED	EC3E03F115BD0FF8E05383E2A8C0E0E7
+        4	PDBETWA	B5DE8A7618957200E0532B0A10ACA707
+
+mkdir -p /u01/app/oracle/admin/cdbmw/wallet
+cd /u01/app/oracle/admin/cdbmw/wallet
+mkdir -p 9BEC9ED60F25365FE0531D0C000AD3CC
+mkdir -p B5DE8A7618957200E0532B0A10ACA707
+
+## add this in sqlnet.ora file
+WALLET_LOCATION =
+   (SOURCE =
+     (METHOD = FILE)
+     (METHOD_DATA =
+       (DIRECTORY = /u01/app/oracle/admin/cdbmw/wallet)
+     )
+   )
+
+--create wallet on CDB level
+administer key management create keystore '/u01/app/oracle/admin/cdbmw/wallet' identified by CdB#wall;
+administer key management set keystore open identified by CdB#wall;
+administer key management set key identified by CdB#wall with backup;
+
+###################################
+# net non-CDB to PDB convert   #
+###################################
+#### open the database in READ ONLY mode to create a manifest file. After that, I completely shut down the temporary
+database and, hopefully, it won’t be needed anymore:
+# sqlplus / as sysdba;
+SQL> SHUTDOWN IMMEDIATE;
+SQL> STARTUP MOUNT;
+SQL> ALTER DATABASE OPEN READ ONLY;
+
+# mkdir -p /u03/tmp
+SQL> EXEC DBMS_PDB.DESCRIBE('/u03/tmp/manifest_PRDKO.xml');
+
+SQL> SHUTDOWN IMMEDIATE;
+
+#### Now, I will start CDB which I shut down previously.
+[oracle@ahosan ~]$ ps -ef | grep pmon
+oracle      5687       1  0 15:28 ?        00:00:00 ora_pmon_cdbmw
+oracle      6309    2224  0 15:35 pts/2    00:00:00 grep --color=auto pmon
+[oracle@ahosan ~]$
+
+CDB SQL> show parameter db_files;
+--Set db_files more then 1000 if db_files less then 200/500.
+CDB SQL> alter system set db_files=10000 scope=spfile;
+
+CDB SQL> CREATE PLUGGABLE DATABASE PDBKETWA USING '/u03/tmp/manifest_PRDKO.xml' COPY file_name_convert = ('/u03/netwa/','/u03/cdbmw/pdbko/');
+CDB SQL> ALTER PLUGGABLE DATABASE PDBKETWA OPEN;
+CDB SQL> ALTER SESSION SET CONTAINER=PDBETWA;
+CDB SQL> @$ORACLE_HOME/rdbms/admin/noncdb_to_pdb.sql
+CDB SQL> SHUTDOWN IMMEDIATE;
+CDB SQL> STARTUP;
+
+--Now, check and resolve any plug-in violations:
+CDB SQL> ALTER SESSION SET CONTAINER=CDB$ROOT;
+CDB SQL> SELECT type, message, action FROM pdb_plug_in_violations WHERE name='PDBKETWA' and status='PENDING';
+
+--finally, ensure that OPEN_MODE=READ WRITE and RESTRICTED=NO. 
+CDB SQL> ALTER SESSION SET CONTAINER=CDB$ROOT;
+CDB SQL> SELECT OPEN_MODE, RESTRICTED FROM gV$PDBS WHERE NAME='PDBKETWA';
+alter pluggable database PDBKETWA open force;
+CDB SQL> ALTER PLUGGABLE DATABASE PDBKETWA SAVE STATE;
+CDB SQL> ALTER PLUGGABLE DATABASE PDBKETWA OPEN INSTANCES=ALL;
+CDB SQL> ALTER PLUGGABLE DATABASE PDBKETWA SAVE STATE INSTANCES=ALL;
+
+#########################
+# listener tns config   #
+#########################
+[oracle@19c ~]$ sqlplus / as sysdba
+
+SQL> alter session set container=PDBKETWA;
+Session altered.
+
+SQL> alter system set local_listener='(address=(protocol=tcp)(host=192.168.226.131) (port=1522))' scope=spfile;
+System altered.
+
+SQL> alter system register;
+System altered.
+
+SQL> alter pluggable database PDBKETWA close immediate;
+Pluggable database altered.
+
+SQL> alter pluggable database PDBKETWA open;
+Pluggable database altered.
+
+SQL> exit;
+
+[oracle@19c ~]$ lsnrctl stop LISTENER_DB
+[oracle@19c ~]$ lsnrctl start LISTENER_DB
+
+
+SID_LIST_LISTENER =
+  (SID_LIST =
+    (SID_DESC =
+      (GLOBAL_DBNAME = TESTCDB)
+      (ORACLE_HOME = /u01/app/oracle/product/19.3.0/db_1)
+      (SID_NAME = TESTCDB)
+    )
+  )
+
+LISTENER =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = 192.168.161.128)(PORT = 1521))
+  )
+
+ADR_BASE_LISTENER = /u01/app/oracle
+
+
+TESTCDB =
+  (DESCRIPTION =
+    (ADDRESS_LIST =
+      (ADDRESS = (PROTOCOL = TCP)(HOST = 192.168.161.128)(PORT = 1521))
+    )
+    (CONNECT_DATA =
+      (SERVICE_NAME = TESTCDB)
+    )
+  )
+
+PDBKETWA =
+  (DESCRIPTION =
+    (ADDRESS_LIST =
+      (ADDRESS = (PROTOCOL = TCP)(HOST = 192.168.161.128)(PORT = 1521))
+    )
+    (CONNECT_DATA =
+      (SERVICE_NAME = PDBKETWA)
+    )
+  )
+
+
+###################connect direct with pdb######################
+COLUMN name FORMAT A30
+SELECT name, pdb FROM   v$services ORDER BY name;
+SELECT OPEN_MODE, RESTRICTED FROM gV$PDBS WHERE NAME='PDBKETWA';
+
+ALTER SESSION SET CONTAINER=PDBKETWA;
+SHOW CON_NAME
+SHOW CON_ID
+
+SQL> show user
+USER is "SYS"
+SQL> alter session set container=PDBKETWA;
+Session altered.
+SQL> create user pdbadmin identified by pdbadmiN#123pdbadmiN#123;
+User created.
+SQL> grant sysdba to pdbadmin;
+Grant succeeded.
+sqlplus
+pdbadmin/pdbadmiN#123pdbadmiN#123@PDBKETWA as sysdba
+
+################################
+# BG non-CDB to PDB convert  #
+################################
+#### open the database in READ ONLY mode to create a manifest file. After that, I completely shut down the temporary
+database and, hopefully, it won’t be needed anymore:
+# sqlplus / as sysdba;
+SQL> SHUTDOWN IMMEDIATE;
+SQL> STARTUP MOUNT;
+SQL> ALTER DATABASE OPEN READ ONLY;
+
+# mkdir -p /u03/tmp
+SQL> EXEC DBMS_PDB.DESCRIBE('/u03/tmp/manifest_PRDBG.xml');
+
+SQL> SHUTDOWN IMMEDIATE;
+
+#### Now, I will start CDB which I shut down previously.
+[oracle@ahosan ~]$ ps -ef | grep pmon
+oracle      5687       1  0 15:28 ?        00:00:00 ora_pmon_cdbmw
+oracle      6309    2224  0 15:35 pts/2    00:00:00 grep --color=auto pmon
+[oracle@ahosan ~]$
+
+CDB SQL> show parameter db_files;
+--Set db_files more then 1000 if db_files less then 200/500.
+CDB SQL> alter system set db_files=10000 scope=spfile;
+
+CDB SQL> CREATE PLUGGABLE DATABASE PDBBG USING '/u03/tmp/manifest_PRDBG.xml' COPY file_name_convert = ('/u02/oradata/bgdb/','/u03/cdbmw/pdbbg/');
+CDB SQL> ALTER PLUGGABLE DATABASE PDBBG OPEN;
+CDB SQL> ALTER SESSION SET CONTAINER=PDBBG;
+CDB SQL> @$ORACLE_HOME/rdbms/admin/noncdb_to_pdb.sql
+CDB SQL> SHUTDOWN IMMEDIATE;
+CDB SQL> STARTUP;
+
+--Now, check and resolve any plug-in violations:
+CDB SQL> ALTER SESSION SET CONTAINER=CDB$ROOT;
+CDB SQL> SELECT type, message, action FROM pdb_plug_in_violations WHERE name='PDBBG' and status='PENDING';
+
+--finally, ensure that OPEN_MODE=READ WRITE and RESTRICTED=NO. 
+CDB SQL> ALTER SESSION SET CONTAINER=CDB$ROOT;
+CDB SQL> SELECT OPEN_MODE, RESTRICTED FROM gV$PDBS WHERE NAME='PDBBG';
+alter pluggable database PDBBG open force;
+CDB SQL> ALTER PLUGGABLE DATABASE PDBBG SAVE STATE;
+CDB SQL> ALTER PLUGGABLE DATABASE PDBBG OPEN INSTANCES=ALL;
+CDB SQL> ALTER PLUGGABLE DATABASE PDBBG SAVE STATE INSTANCES=ALL;
+
+#########################
+# listener tns config   #
+#########################
+[oracle@19c ~]$ sqlplus / as sysdba
+
+SQL> alter session set container=PDBBG;
+Session altered.
+
+SQL> alter system set local_listener='(address=(protocol=tcp)(host=192.168.226.131) (port=1522))' scope=spfile;
+System altered.
+
+SQL> alter system register;
+System altered.
+
+SQL> alter pluggable database PDBBG close immediate;
+Pluggable database altered.
+
+SQL> alter pluggable database PDBBG open;
+Pluggable database altered.
+
+SQL> exit;
+
+[oracle@19c ~]$ lsnrctl stop LISTENER_DB
+[oracle@19c ~]$ lsnrctl start LISTENER_DB
+
+
+SID_LIST_LISTENER =
+  (SID_LIST =
+    (SID_DESC =
+      (GLOBAL_DBNAME = TESTCDB)
+      (ORACLE_HOME = /u01/app/oracle/product/19.3.0/db_1)
+      (SID_NAME = TESTCDB)
+    )
+  )
+
+LISTENER =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = 192.168.161.128)(PORT = 1521))
+  )
+
+ADR_BASE_LISTENER = /u01/app/oracle
+
+
+TESTCDB =
+  (DESCRIPTION =
+    (ADDRESS_LIST =
+      (ADDRESS = (PROTOCOL = TCP)(HOST = 192.168.161.128)(PORT = 1521))
+    )
+    (CONNECT_DATA =
+      (SERVICE_NAME = TESTCDB)
+    )
+  )
+
+PDBBG =
+  (DESCRIPTION =
+    (ADDRESS_LIST =
+      (ADDRESS = (PROTOCOL = TCP)(HOST = 192.168.226.131)(PORT = 1521))
+    )
+    (CONNECT_DATA =
+      (SERVICE_NAME = PDBBG)
+    )
+  )
+
+###################connect direct with pdb######################
+COLUMN name FORMAT A30
+SELECT name, pdb FROM   v$services ORDER BY name;
+SELECT OPEN_MODE, RESTRICTED FROM gV$PDBS WHERE NAME='PDBBG';
+
+ALTER SESSION SET CONTAINER=PDBBG;
+SHOW CON_NAME
+SHOW CON_ID
+
+SQL> show user
+USER is "SYS"
+SQL> alter session set container=PDBBG;
+Session altered.
+SQL> create user pdbadmin identified by pdbadmiN#123pdbadmiN#123;
+User created.
+SQL> grant sysdba to pdbadmin;
+Grant succeeded.
+sqlplus
+pdbadmin/pdbadmiN#123pdbadmiN#123@PDBBG as sysdba
+
+#######################wallet export import########################
+-----NRBG--------
+orapki wallet display -wallet /u01/app/oracle/admin/bgdr/wallet
+
+SQL> select status, WALLET_TYPE from v$encryption_wallet;
+STATUS                         WALLET_TYPE
+------------------------------ --------------------
+OPEN                           AUTOLOGIN
+
+SQL> alter system set encryption wallet close;
+
+administer key management
+        set keystore open
+        identified by "####";
+administer key management
+        export keys with secret "####"
+        to '/tmp/dbnrbgWallet.exp'
+        identified by "#####";
+
+sqlplus / as sysdba
+administer key management set keystore open identified by CdB#wall;
+alter session set container=PDBBG;
+administer key management set keystore open identified by CdB#wall;
+administer key management
+        import keys with secret "######"
+        from '/tmp/dbnrbgWallet.exp'
+        identified by "CdB#wall"
+        with backup;
+
+alter pluggable database PDBBG close;
+alter pluggable database PDBBG open;
+
+----------Kionet------
+orapki wallet display -wallet /u01/app/oracle/admin/netwa/wallet
+
+SQL> select status, WALLET_TYPE from v$encryption_wallet;
+STATUS                         WALLET_TYPE
+------------------------------ --------------------
+OPEN                           AUTOLOGIN
+
+SQL> alter system set encryption wallet close;
+
+administer key management
+        set keystore open
+        identified by "#####";
+administer key management
+        export keys with secret "####"
+        to '/tmp/dbKionetWallet.exp'
+        identified by "######";
+
+sqlplus / as sysdba
+administer key management set keystore open identified by CdB#wall;
+alter session set container=PDBNETWA;
+administer key management set keystore open identified by CdB#wall;
+administer key management
+        import keys with secret "######"
+        from '/tmp/dbKionetWallet.exp'
+        identified by "CdB#wall"
+        with backup;
+
+alter pluggable database PDBNETWA close;
+alter pluggable database PDBNETWA open;
+
+-- if need "master key set on CDB" and check [Note: not use always]
+select * from V$ENCRYPTION_KEYS;
+ADMINISTER KEY MANAGEMENT USE KEY "AsffagrehtyukjS8R+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" IDENTIFIED BY CdB#wall WITH BACKUP;
